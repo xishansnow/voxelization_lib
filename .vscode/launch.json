@@ -1,0 +1,170 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Example Usage",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/example_usage",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/build:${env:LD_LIBRARY_PATH}"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "build",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "logging": {
+                "moduleLoad": true,
+                "trace": true,
+                "engineLogging": true,
+                "programOutput": true,
+                "exceptions": true
+            }
+        },
+        {
+            "name": "Debug Test Voxelization",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/test_voxelization",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/build:${env:LD_LIBRARY_PATH}"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "build",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "logging": {
+                "moduleLoad": true,
+                "trace": false,
+                "engineLogging": false,
+                "programOutput": true,
+                "exceptions": true
+            }
+        },
+        {
+            "name": "Debug with Arguments",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/example_usage",
+            "args": [
+                "--verbose",
+                "--debug"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/build:${env:LD_LIBRARY_PATH}"
+                },
+                {
+                    "name": "VOXELIZATION_DEBUG",
+                    "value": "1"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "build",
+            "miDebuggerPath": "/usr/bin/gdb"
+        },
+        {
+            "name": "Attach to Process",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/build/example_usage",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "miDebuggerPath": "/usr/bin/gdb"
+        },
+        {
+            "name": "Debug Library (Core Dump)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/example_usage",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/build:${env:LD_LIBRARY_PATH}"
+                },
+                {
+                    "name": "GOTRACEBACK",
+                    "value": "crash"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set breakpoint on abort",
+                    "text": "break abort",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set breakpoint on exit",
+                    "text": "break exit",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "build",
+            "miDebuggerPath": "/usr/bin/gdb"
+        }
+    ]
+}
