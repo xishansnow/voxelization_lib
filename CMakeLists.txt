@@ -12,14 +12,21 @@ endif()
 
 # Include directories
 find_package(Eigen3 REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ASSIMP REQUIRED assimp)
+
 include_directories(include)
 include_directories(${EIGEN3_INCLUDE_DIRS})
+include_directories(${ASSIMP_INCLUDE_DIRS})
 
 # Source files
 set(SOURCES
     src/spatial_entities.cpp
-    src/voxelization_algorithms.cpp
+    src/cpu_voxelization.cpp
+    src/gpu_voxelization.cpp
+    src/hybrid_voxelization.cpp
     src/voxelization_factory.cpp
+    src/mesh_loader.cpp
 )
 
 # Header files
@@ -27,7 +34,11 @@ set(HEADERS
     include/voxelization_base.hpp
     include/spatial_entities.hpp
     include/voxelization_algorithms.hpp
+    include/cpu_voxelization.hpp
+    include/gpu_voxelization.hpp
+    include/hybrid_voxelization.hpp
     include/voxelization_factory.hpp
+    include/mesh_loader.hpp
     # include/simple_vector.hpp
 )
 
@@ -55,13 +66,20 @@ target_include_directories(voxelization_lib PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+# Link libraries
+target_link_libraries(voxelization_lib ${ASSIMP_LIBRARIES})
+
 # Create test executable
 add_executable(test_voxelization test/test_voxelization.cpp)
-target_link_libraries(test_voxelization voxelization_lib Eigen3::Eigen)
+target_link_libraries(test_voxelization voxelization_lib Eigen3::Eigen ${ASSIMP_LIBRARIES})
 
 # Create example executable
 add_executable(example_usage examples/example_usage.cpp)
-target_link_libraries(example_usage voxelization_lib)
+target_link_libraries(example_usage voxelization_lib ${ASSIMP_LIBRARIES})
+
+# Create mesh voxelization example executable
+add_executable(mesh_voxelization_example examples/mesh_voxelization_example.cpp)
+target_link_libraries(mesh_voxelization_example voxelization_lib ${ASSIMP_LIBRARIES})
 
 # Print configuration info
 message(STATUS "Voxelization Library Configuration:")
