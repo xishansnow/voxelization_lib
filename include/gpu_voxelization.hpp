@@ -48,6 +48,14 @@ namespace voxelization {
         // GPU-specific methods
         bool isGPUAvailable() const { return gpu_available_; }
 
+        // GPU voxelization methods for specific entity types
+        int voxelizeBoxGPU(const std::shared_ptr<SpatialEntity>& entity,
+            double buffer_size, unsigned char cost_value);
+        int voxelizeSphereGPU(const std::shared_ptr<SpatialEntity>& entity,
+            double buffer_size, unsigned char cost_value);
+        int voxelizeCylinderGPU(const std::shared_ptr<SpatialEntity>& entity,
+            double buffer_size, unsigned char cost_value);
+
         void setResolution(int x, int y, int z) override;
         void setBoundingBox(double min_x, double min_y, double min_z, double max_x, double max_y, double max_z) override;
         bool voxelize(const std::vector<std::shared_ptr<SpatialEntity>>& entities) override;

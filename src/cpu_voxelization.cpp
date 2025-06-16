@@ -3,6 +3,9 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace voxelization {
 
@@ -66,6 +69,9 @@ namespace voxelization {
 
         int marked_voxels = 0;
 
+#ifdef _OPENMP
+#pragma omp parallel for reduction(+:marked_voxels) collapse(3)
+#endif
         for (int z = min_z; z <= max_z; ++z) {
             for (int y = min_y; y <= max_y; ++y) {
                 for (int x = min_x; x <= max_x; ++x) {
@@ -199,14 +205,21 @@ namespace voxelization {
 
         int marked_voxels = 0;
 
+        // Optimized serial implementation with better memory access pattern
         for (int z = min_z; z <= max_z; ++z) {
+            // Pre-calculate z offset to avoid repeated multiplication
+            int z_offset = z * grid_x_ * grid_y_;
+
             for (int y = min_y; y <= max_y; ++y) {
+                // Pre-calculate y offset
+                int y_offset = z_offset + y * grid_x_;
+
                 for (int x = min_x; x <= max_x; ++x) {
                     double world_x, world_y, world_z;
                     voxelToWorld(x, y, z, world_x, world_y, world_z);
 
                     if (entity->isPointInside(world_x, world_y, world_z)) {
-                        int index = z * grid_x_ * grid_y_ + y * grid_x_ + x;
+                        int index = y_offset + x;
                         voxel_grid_[index] = cost_value;
                         marked_voxels++;
                     }
@@ -258,6 +271,15 @@ namespace voxelization {
     CPUParallelVoxelization::CPUParallelVoxelization()
         : grid_x_(0), grid_y_(0), grid_z_(0), resolution_xy_(0.0), resolution_z_(0.0),
         origin_x_(0.0), origin_y_(0.0), origin_z_(0.0) {
+
+        // Set OpenMP thread count to number of CPU cores
+#ifdef _OPENMP
+        int num_threads = omp_get_max_threads();
+        omp_set_num_threads(num_threads);
+        std::cout << "CPU Parallel Voxelization initialized with " << num_threads << " threads" << std::endl;
+#else
+        std::cout << "CPU Parallel Voxelization initialized (OpenMP not available)" << std::endl;
+#endif
     }
 
     CPUParallelVoxelization::~CPUParallelVoxelization() = default;
@@ -314,7 +336,9 @@ namespace voxelization {
 
         int marked_voxels = 0;
 
-        // #pragma omp parallel for reduction(+:marked_voxels) collapse(3)
+#ifdef _OPENMP
+#pragma omp parallel for reduction(+:marked_voxels) collapse(3)
+#endif
         for (int z = min_z; z <= max_z; ++z) {
             for (int y = min_y; y <= max_y; ++y) {
                 for (int x = min_x; x <= max_x; ++x) {
@@ -456,15 +480,24 @@ namespace voxelization {
 
         int marked_voxels = 0;
 
-        // #pragma omp parallel for reduction(+:marked_voxels) collapse(3)
+        // Optimized parallel implementation with better memory access pattern
+#ifdef _OPENMP
+#pragma omp parallel for reduction(+:marked_voxels) schedule(dynamic, 1)
+#endif
         for (int z = min_z; z <= max_z; ++z) {
+            // Pre-calculate z offset to avoid repeated multiplication
+            int z_offset = z * grid_x_ * grid_y_;
+
             for (int y = min_y; y <= max_y; ++y) {
+                // Pre-calculate y offset
+                int y_offset = z_offset + y * grid_x_;
+
                 for (int x = min_x; x <= max_x; ++x) {
                     double world_x, world_y, world_z;
                     voxelToWorld(x, y, z, world_x, world_y, world_z);
 
                     if (entity->isPointInside(world_x, world_y, world_z)) {
-                        int index = z * grid_x_ * grid_y_ + y * grid_x_ + x;
+                        int index = y_offset + x;
                         voxel_grid_[index] = cost_value;
                         marked_voxels++;
                     }

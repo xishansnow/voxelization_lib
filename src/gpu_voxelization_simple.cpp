@@ -7,7 +7,6 @@
 #include <thread>
 #include <vector>
 
-
 namespace voxelization {
 
     // Simplified GPU implementation using CPU threads to simulate GPU parallelism
@@ -42,7 +41,7 @@ namespace voxelization {
                 int z_start = t * z_per_thread;
                 int z_end = (t == num_threads_ - 1) ? grid_z_ : (t + 1) * z_per_thread;
 
-                threads.emplace_back([=]() {
+                threads.emplace_back([=, this]() {
                     for (int z = z_start; z < z_end; ++z) {
                         for (int y = 0; y < grid_y_; ++y) {
                             for (int x = 0; x < grid_x_; ++x) {
@@ -82,7 +81,7 @@ namespace voxelization {
                 int z_start = t * z_per_thread;
                 int z_end = (t == num_threads_ - 1) ? grid_z_ : (t + 1) * z_per_thread;
 
-                threads.emplace_back([=]() {
+                threads.emplace_back([=, this]() {
                     for (int z = z_start; z < z_end; ++z) {
                         for (int y = 0; y < grid_y_; ++y) {
                             for (int x = 0; x < grid_x_; ++x) {
@@ -124,7 +123,7 @@ namespace voxelization {
                 int z_start = t * z_per_thread;
                 int z_end = (t == num_threads_ - 1) ? grid_z_ : (t + 1) * z_per_thread;
 
-                threads.emplace_back([=]() {
+                threads.emplace_back([=, this]() {
                     for (int z = z_start; z < z_end; ++z) {
                         for (int y = 0; y < grid_y_; ++y) {
                             for (int x = 0; x < grid_x_; ++x) {
@@ -501,35 +500,6 @@ namespace voxelization {
     bool GPUCudaVoxelization::voxelize(const std::vector<std::shared_ptr<SpatialEntity>>& entities) {
         clear();
         return voxelizeEntities(entities) > 0;
-    }
-
-    bool GPUCudaVoxelization::saveVoxelGrid(const std::string& filename) const {
-        std::ofstream file(filename, std::ios::binary);
-        if (!file.is_open()) {
-            std::cerr << "Error: Could not open file " << filename << " for writing." << std::endl;
-            return false;
-        }
-
-        // Write grid dimensions
-        file.write(reinterpret_cast<const char*>(&grid_x_), sizeof(int));
-        file.write(reinterpret_cast<const char*>(&grid_y_), sizeof(int));
-        file.write(reinterpret_cast<const char*>(&grid_z_), sizeof(int));
-
-        // Write resolutions
-        file.write(reinterpret_cast<const char*>(&resolution_xy_), sizeof(double));
-        file.write(reinterpret_cast<const char*>(&resolution_z_), sizeof(double));
-
-        // Write origin
-        file.write(reinterpret_cast<const char*>(&origin_x_), sizeof(double));
-        file.write(reinterpret_cast<const char*>(&origin_y_), sizeof(double));
-        file.write(reinterpret_cast<const char*>(&origin_z_), sizeof(double));
-
-        // Write voxel grid data
-        file.write(reinterpret_cast<const char*>(voxel_grid_.data()), voxel_grid_.size());
-
-        file.close();
-        std::cout << "Voxel grid saved to " << filename << std::endl;
-        return true;
     }
 
 } // namespace voxelization
