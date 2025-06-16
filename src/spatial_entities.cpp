@@ -2,6 +2,8 @@
 #include <cmath>
 #include <algorithm>
 #include <Eigen/Dense>
+#include <limits>
+#include <random>
 
 namespace voxelization {
 
@@ -247,6 +249,61 @@ namespace voxelization {
         return {
             {"entity_count", static_cast<double>(entities_.size())}
         };
+    }
+
+    // MeshEntity implementation
+    MeshEntity::MeshEntity(const std::vector<Eigen::Vector3d>& vertices, const std::vector<std::vector<int>>& faces)
+        : vertices_(vertices), faces_(faces) {
+    }
+
+    std::vector<double> MeshEntity::getBoundingBox() const {
+        double min_x = std::numeric_limits<double>::max();
+        double min_y = std::numeric_limits<double>::max();
+        double min_z = std::numeric_limits<double>::max();
+        double max_x = std::numeric_limits<double>::lowest();
+        double max_y = std::numeric_limits<double>::lowest();
+        double max_z = std::numeric_limits<double>::lowest();
+        for (const auto& v : vertices_) {
+            min_x = std::min(min_x, v.x());
+            min_y = std::min(min_y, v.y());
+            min_z = std::min(min_z, v.z());
+            max_x = std::max(max_x, v.x());
+            max_y = std::max(max_y, v.y());
+            max_z = std::max(max_z, v.z());
+        }
+        return { min_x, min_y, min_z, max_x, max_y, max_z };
+    }
+
+    bool MeshEntity::isPointInside(double x, double y, double z) const {
+        // 简单实现：判断点是否在包围盒内
+        auto bbox = getBoundingBox();
+        return x >= bbox[0] && x <= bbox[3] &&
+            y >= bbox[1] && y <= bbox[4] &&
+            z >= bbox[2] && z <= bbox[5];
+    }
+
+    std::map<std::string, double> MeshEntity::getProperties() const {
+        // 返回顶点数和面数等属性
+        std::map<std::string, double> props;
+        props["vertex_count"] = static_cast<double>(vertices_.size());
+        props["face_count"] = static_cast<double>(faces_.size());
+        return props;
+    }
+
+    std::vector<std::shared_ptr<SpatialEntity>> SpatialEntityFactory::createRandomEntities(int num) {
+        std::vector<std::shared_ptr<SpatialEntity>> entities;
+        std::mt19937 rng(42);
+        std::uniform_real_distribution<float> dist(-10.0f, 10.0f);
+        for (int i = 0; i < num; ++i) {
+            float cx = dist(rng);
+            float cy = dist(rng);
+            float cz = dist(rng);
+            float sx = 1.0f + dist(rng) * 0.1f;
+            float sy = 1.0f + dist(rng) * 0.1f;
+            float sz = 1.0f + dist(rng) * 0.1f;
+            entities.push_back(std::make_shared<BoxEntity>(cx, cy, cz, sx, sy, sz));
+        }
+        return entities;
     }
 
 } // namespace voxelization

@@ -26,37 +26,6 @@ namespace voxelization {
     };
 
     /**
-     * @brief Mesh entity that can be voxelized
-     */
-    class MeshEntity : public SpatialEntity {
-    public:
-        MeshEntity(const std::string& filename);
-        MeshEntity(const MeshData& mesh_data);
-        ~MeshEntity() override = default;
-
-        // SpatialEntity interface
-        std::vector<double> getBoundingBox() const override;
-        bool isPointInside(double x, double y, double z) const override;
-        std::string getType() const override { return "mesh"; }
-        std::map<std::string, double> getProperties() const override;
-
-        // Mesh-specific methods
-        const MeshData& getMeshData() const { return mesh_data_; }
-        bool loadFromFile(const std::string& filename);
-        bool isValid() const { return !mesh_data_.vertices.empty(); }
-
-    private:
-        MeshData mesh_data_;
-        void computeBoundingBox();
-        bool rayTriangleIntersection(const Eigen::Vector3f& origin,
-            const Eigen::Vector3f& direction,
-            const Eigen::Vector3f& v0,
-            const Eigen::Vector3f& v1,
-            const Eigen::Vector3f& v2,
-            float& t) const;
-    };
-
-    /**
      * @brief Utility class for loading and processing 3D mesh files
      */
     class MeshLoader {

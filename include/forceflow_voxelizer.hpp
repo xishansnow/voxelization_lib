@@ -1,20 +1,23 @@
-#ifndef GPU_VOXELIZATION_HPP
-#define GPU_VOXELIZATION_HPP
+#ifndef FORCEFLOW_VOXELIZER_HPP
+#define FORCEFLOW_VOXELIZER_HPP
 
 #include "voxelization_base.hpp"
 #include "spatial_entities.hpp"
 #include <vector>
 #include <memory>
+#include <cuda_runtime.h>
 
 namespace voxelization {
 
     /**
-     * @brief GPU voxelization algorithm using CUDA
+     * @brief ForceFlow GPU voxelizer - specialized for high-performance mesh voxelization
+     * Based on the efficient CUDA voxelizer implementation from ForceFlow
+     * Optimized for polygon meshes with Morton encoding and bounding box optimization
      */
-    class GPUCudaVoxelization : public VoxelizationBase {
+    class ForceFlowVoxelizer : public VoxelizationBase {
     public:
-        GPUCudaVoxelization();
-        ~GPUCudaVoxelization() override;
+        ForceFlowVoxelizer();
+        ~ForceFlowVoxelizer() override;
 
         void initialize(int grid_x, int grid_y, int grid_z,
             double resolution_xy, double resolution_z,
@@ -46,16 +49,10 @@ namespace voxelization {
         bool saveToFile(const std::string& filename) const override;
         bool loadFromFile(const std::string& filename) override;
 
-        // GPU-specific methods
+        // ForceFlow-specific methods
         bool isGPUAvailable() const { return gpu_available_; }
-
-        // GPU voxelization methods for specific entity types
-        int voxelizeBoxGPU(const std::shared_ptr<SpatialEntity>& entity,
-            double buffer_size, unsigned char cost_value);
-        int voxelizeSphereGPU(const std::shared_ptr<SpatialEntity>& entity,
-            double buffer_size, unsigned char cost_value);
-        int voxelizeCylinderGPU(const std::shared_ptr<SpatialEntity>& entity,
-            double buffer_size, unsigned char cost_value);
+        bool isSolidVoxelization() const { return solid_voxelization_; }
+        void setSolidVoxelization(bool solid) { solid_voxelization_ = solid; }
 
         void setResolution(int x, int y, int z) override;
         void setBoundingBox(double min_x, double min_y, double min_z, double max_x, double max_y, double max_z) override;
@@ -75,35 +72,28 @@ namespace voxelization {
         size_t grid_size_;
 
         bool gpu_available_;
+        bool solid_voxelization_;  // Whether to use solid voxelization
 
+        // ForceFlow-specific mesh voxelization
+        int voxelizeMeshForceFlow(const std::shared_ptr<MeshEntity>& mesh, double buffer_size, unsigned char cost_value);
+
+        // GPU memory management
         void allocateGPUMemory();
         void freeGPUMemory();
         void copyToGPU();
         void copyFromGPU();
 
-        int markBoxEntityGPU(const std::shared_ptr<SpatialEntity>& entity,
-            double buffer_size, unsigned char cost_value);
-        int markCylinderEntityGPU(const std::shared_ptr<SpatialEntity>& entity,
-            double buffer_size, unsigned char cost_value);
-        int markSphereEntityGPU(const std::shared_ptr<SpatialEntity>& entity,
-            double buffer_size, unsigned char cost_value);
+        // Morton encoding utilities (for memory access optimization)
+        unsigned int mortonEncode(unsigned int x, unsigned int y, unsigned int z) const;
+        void mortonDecode(unsigned int morton, unsigned int& x, unsigned int& y, unsigned int& z) const;
 
-        int voxelizeBox(const std::shared_ptr<BoxEntity>& box, double buffer_size, unsigned char cost_value);
-        int voxelizeSphere(const std::shared_ptr<SphereEntity>& sphere, double buffer_size, unsigned char cost_value);
-        int voxelizeCylinder(const std::shared_ptr<CylinderEntity>& cylinder, double buffer_size, unsigned char cost_value);
-        int voxelizeEllipsoid(const std::shared_ptr<EllipsoidEntity>& ellipsoid, double buffer_size, unsigned char cost_value);
-        int voxelizeCone(const std::shared_ptr<ConeEntity>& cone, double buffer_size, unsigned char cost_value);
-        int voxelizeMesh(const std::shared_ptr<MeshEntity>& mesh, double buffer_size, unsigned char cost_value);
+        // Bounding box calculation for mesh
+        std::vector<double> calculateMeshBoundingBox(const std::shared_ptr<MeshEntity>& mesh) const;
 
-        // GPUOnly versions (no data transfer)
-        void voxelizeBoxGPUOnly(const std::shared_ptr<BoxEntity>& box, double buffer_size, unsigned char cost_value);
-        void voxelizeSphereGPUOnly(const std::shared_ptr<SphereEntity>& sphere, double buffer_size, unsigned char cost_value);
-        void voxelizeCylinderGPUOnly(const std::shared_ptr<CylinderEntity>& cylinder, double buffer_size, unsigned char cost_value);
-        void voxelizeEllipsoidGPUOnly(const std::shared_ptr<EllipsoidEntity>& ellipsoid, double buffer_size, unsigned char cost_value);
-        void voxelizeConeGPUOnly(const std::shared_ptr<ConeEntity>& cone, double buffer_size, unsigned char cost_value);
-        void voxelizeMeshGPUOnly(const std::shared_ptr<MeshEntity>& mesh, double buffer_size, unsigned char cost_value);
+        // Fallback to CPU for non-mesh entities
+        int fallbackToCPU(const std::shared_ptr<SpatialEntity>& entity, double buffer_size, unsigned char cost_value);
     };
 
 } // namespace voxelization
 
-#endif // GPU_VOXELIZATION_HPP
+#endif // FORCEFLOW_VOXELIZER_HPP

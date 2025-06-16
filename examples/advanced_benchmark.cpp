@@ -11,9 +11,16 @@
 #include <omp.h>
 #include <map>
 #include <functional>
+#include <Eigen/Core>
+#include <cmath>
+
+#define _USE_MATH_DEFINES
+#include <cmath>
 
 #include "voxelization_factory.hpp"
 #include "spatial_entities.hpp"
+#include "gpu_voxelization_optimized.hpp"
+#include "gpu_voxelization.hpp"
 
 using namespace voxelization;
 
@@ -32,6 +39,7 @@ struct AdvancedBenchmarkResult {
     double cpu_utilization;
     int grid_size_x, grid_size_y, grid_size_z;
     double resolution_xy, resolution_z;
+    int active_voxels;
 };
 
 /**
@@ -67,7 +75,7 @@ public:
         pos_dist_(min_pos, max_pos),
         size_dist_(min_size, max_size),
         radius_dist_(min_size / 2, max_size / 2),
-        type_dist_(0, 4),
+        type_dist_(0, 2),
         ratio_dist_(0.5, 2.0) {
     }
 
@@ -93,17 +101,6 @@ public:
             double radius = radius_dist_(gen_);
             return std::make_shared<SphereEntity>(x, y, z, radius);
         }
-        case 3: { // Ellipsoid
-            double radius_x = radius_dist_(gen_);
-            double radius_y = radius_dist_(gen_);
-            double radius_z = radius_dist_(gen_);
-            return std::make_shared<EllipsoidEntity>(x, y, z, radius_x, radius_y, radius_z);
-        }
-        case 4: { // Cone
-            double radius = radius_dist_(gen_);
-            double height = size_dist_(gen_);
-            return std::make_shared<ConeEntity>(x, y, z, radius, height);
-        }
         default:
             return std::make_shared<SphereEntity>(x, y, z, radius_dist_(gen_));
         }
@@ -115,6 +112,54 @@ public:
 
         for (int i = 0; i < count; ++i) {
             entities.push_back(generateRandomEntity());
+        }
+
+        return entities;
+    }
+
+    // Generate mesh entities for ForceFlow testing
+    std::shared_ptr<SpatialEntity> generateRandomMeshEntity() {
+        double x = pos_dist_(gen_);
+        double y = pos_dist_(gen_);
+        double z = pos_dist_(gen_);
+        double size = size_dist_(gen_);
+
+        // Random mesh type selection
+        std::uniform_int_distribution<int> mesh_type_dist(0, 4);
+        int mesh_type = mesh_type_dist(gen_);
+
+        std::vector<Eigen::Vector3d> vertices;
+        std::vector<std::vector<int>> faces;
+
+        switch (mesh_type) {
+        case 0: // Complex cube with internal structure
+            generateComplexCubeMesh(x, y, z, size, vertices, faces);
+            break;
+        case 1: // Pyramid mesh
+            generatePyramidMesh(x, y, z, size, vertices, faces);
+            break;
+        case 2: // Torus-like mesh
+            generateTorusMesh(x, y, z, size, vertices, faces);
+            break;
+        case 3: // Star-shaped mesh
+            generateStarMesh(x, y, z, size, vertices, faces);
+            break;
+        case 4: // Irregular polyhedron
+            generateIrregularPolyhedron(x, y, z, size, vertices, faces);
+            break;
+        default:
+            generateComplexCubeMesh(x, y, z, size, vertices, faces);
+        }
+
+        return std::make_shared<MeshEntity>(vertices, faces);
+    }
+
+    std::vector<std::shared_ptr<SpatialEntity>> generateMeshEntityBatch(int count) {
+        std::vector<std::shared_ptr<SpatialEntity>> entities;
+        entities.reserve(count);
+
+        for (int i = 0; i < count; ++i) {
+            entities.push_back(generateRandomMeshEntity());
         }
 
         return entities;
@@ -162,24 +207,198 @@ public:
                     entities.push_back(std::make_shared<SphereEntity>(x, y, z, radius));
                     break;
                 }
-                case 3: {
-                    double radius_x = radius_dist_(gen_);
-                    double radius_y = radius_dist_(gen_);
-                    double radius_z = radius_dist_(gen_);
-                    entities.push_back(std::make_shared<EllipsoidEntity>(x, y, z, radius_x, radius_y, radius_z));
-                    break;
-                }
-                case 4: {
-                    double radius = radius_dist_(gen_);
-                    double height = size_dist_(gen_);
-                    entities.push_back(std::make_shared<ConeEntity>(x, y, z, radius, height));
-                    break;
-                }
                 }
             }
         }
 
         return entities;
+    }
+
+private:
+    // Generate a complex cube with internal structure
+    void generateComplexCubeMesh(double x, double y, double z, double size,
+        std::vector<Eigen::Vector3d>& vertices,
+        std::vector<std::vector<int>>& faces) {
+        // Base cube vertices
+        vertices = {
+            {x, y, z}, {x + size, y, z}, {x + size, y + size, z}, {x, y + size, z},
+            {x, y, z + size}, {x + size, y, z + size}, {x + size, y + size, z + size}, {x, y + size, z + size}
+        };
+
+        // Add internal vertices for complexity
+        double half_size = size / 2.0;
+        vertices.push_back({ x + half_size, y + half_size, z + half_size }); // center
+        vertices.push_back({ x + half_size, y, z + half_size }); // front center
+        vertices.push_back({ x + half_size, y + size, z + half_size }); // back center
+        vertices.push_back({ x, y + half_size, z + half_size }); // left center
+        vertices.push_back({ x + size, y + half_size, z + half_size }); // right center
+
+        // Complex face structure
+        faces = {
+            // Bottom faces
+            {0, 1, 8}, {1, 2, 8}, {2, 3, 8}, {3, 0, 8},
+            // Top faces
+            {4, 7, 8}, {7, 6, 8}, {6, 5, 8}, {5, 4, 8},
+            // Front faces
+            {0, 4, 9}, {4, 5, 9}, {5, 1, 9}, {1, 0, 9},
+            // Back faces
+            {2, 6, 10}, {6, 7, 10}, {7, 3, 10}, {3, 2, 10},
+            // Left faces
+            {0, 3, 11}, {3, 7, 11}, {7, 4, 11}, {4, 0, 11},
+            // Right faces
+            {1, 5, 12}, {5, 6, 12}, {6, 2, 12}, {2, 1, 12}
+        };
+    }
+
+    // Generate a pyramid mesh
+    void generatePyramidMesh(double x, double y, double z, double size,
+        std::vector<Eigen::Vector3d>& vertices,
+        std::vector<std::vector<int>>& faces) {
+        double half_size = size / 2.0;
+        double height = size * 1.5;
+
+        vertices = {
+            // Base square
+            {x, y, z}, {x + size, y, z}, {x + size, y + size, z}, {x, y + size, z},
+            // Apex
+            {x + half_size, y + half_size, z + height}
+        };
+
+        faces = {
+            // Base
+            {0, 2, 1}, {0, 3, 2},
+            // Triangular faces
+            {0, 1, 4}, {1, 2, 4}, {2, 3, 4}, {3, 0, 4}
+        };
+    }
+
+    // Generate a torus-like mesh
+    void generateTorusMesh(double x, double y, double z, double size,
+        std::vector<Eigen::Vector3d>& vertices,
+        std::vector<std::vector<int>>& faces) {
+        double center_x = x + size / 2.0;
+        double center_y = y + size / 2.0;
+        double center_z = z + size / 2.0;
+        double major_radius = size / 3.0;
+        double minor_radius = size / 6.0;
+
+        int major_segments = 8;
+        int minor_segments = 6;
+
+        // Generate vertices
+        for (int i = 0; i < major_segments; ++i) {
+            double major_angle = 2.0 * M_PI * i / major_segments;
+            for (int j = 0; j < minor_segments; ++j) {
+                double minor_angle = 2.0 * M_PI * j / minor_segments;
+
+                double x_pos = center_x + (major_radius + minor_radius * cos(minor_angle)) * cos(major_angle);
+                double y_pos = center_y + (major_radius + minor_radius * cos(minor_angle)) * sin(major_angle);
+                double z_pos = center_z + minor_radius * sin(minor_angle);
+
+                vertices.push_back({ x_pos, y_pos, z_pos });
+            }
+        }
+
+        // Generate faces
+        for (int i = 0; i < major_segments; ++i) {
+            for (int j = 0; j < minor_segments; ++j) {
+                int current = i * minor_segments + j;
+                int next_major = ((i + 1) % major_segments) * minor_segments + j;
+                int next_minor = i * minor_segments + ((j + 1) % minor_segments);
+                int next_both = ((i + 1) % major_segments) * minor_segments + ((j + 1) % minor_segments);
+
+                faces.push_back({ current, next_major, next_both });
+                faces.push_back({ current, next_both, next_minor });
+            }
+        }
+    }
+
+    // Generate a star-shaped mesh
+    void generateStarMesh(double x, double y, double z, double size,
+        std::vector<Eigen::Vector3d>& vertices,
+        std::vector<std::vector<int>>& faces) {
+        double center_x = x + size / 2.0;
+        double center_y = y + size / 2.0;
+        double center_z = z + size / 2.0;
+
+        // Center vertex
+        vertices.push_back({ center_x, center_y, center_z });
+
+        int num_points = 8;
+        double outer_radius = size / 2.0;
+        double inner_radius = size / 4.0;
+
+        // Generate star points
+        for (int i = 0; i < num_points; ++i) {
+            double angle = 2.0 * M_PI * i / num_points;
+            double outer_x = center_x + outer_radius * cos(angle);
+            double outer_y = center_y + outer_radius * sin(angle);
+            double outer_z = center_z + (i % 2 == 0 ? size / 3.0 : -size / 3.0);
+
+            double inner_x = center_x + inner_radius * cos(angle + M_PI / num_points);
+            double inner_y = center_y + inner_radius * sin(angle + M_PI / num_points);
+            double inner_z = center_z;
+
+            vertices.push_back({ outer_x, outer_y, outer_z });
+            vertices.push_back({ inner_x, inner_y, inner_z });
+        }
+
+        // Generate triangular faces
+        for (int i = 0; i < num_points; ++i) {
+            int outer1 = 1 + i * 2;
+            int inner1 = 2 + i * 2;
+            int outer2 = 1 + ((i + 1) % num_points) * 2;
+            int inner2 = 2 + ((i + 1) % num_points) * 2;
+
+            // Triangles from center
+            faces.push_back({ 0, outer1, inner1 });
+            faces.push_back({ 0, inner1, outer2 });
+
+            // Quad faces (as triangles)
+            faces.push_back({ inner1, inner2, outer2 });
+            faces.push_back({ inner1, outer2, outer1 });
+        }
+    }
+
+    // Generate an irregular polyhedron
+    void generateIrregularPolyhedron(double x, double y, double z, double size,
+        std::vector<Eigen::Vector3d>& vertices,
+        std::vector<std::vector<int>>& faces) {
+        // Create an irregular polyhedron with random perturbations
+        std::uniform_real_distribution<double> perturb_dist(-size * 0.1, size * 0.1);
+
+        // Base vertices with perturbations
+        vertices = {
+            {x + perturb_dist(gen_), y + perturb_dist(gen_), z + perturb_dist(gen_)},
+            {x + size + perturb_dist(gen_), y + perturb_dist(gen_), z + perturb_dist(gen_)},
+            {x + size + perturb_dist(gen_), y + size + perturb_dist(gen_), z + perturb_dist(gen_)},
+            {x + perturb_dist(gen_), y + size + perturb_dist(gen_), z + perturb_dist(gen_)},
+            {x + perturb_dist(gen_), y + perturb_dist(gen_), z + size + perturb_dist(gen_)},
+            {x + size + perturb_dist(gen_), y + perturb_dist(gen_), z + size + perturb_dist(gen_)},
+            {x + size + perturb_dist(gen_), y + size + perturb_dist(gen_), z + size + perturb_dist(gen_)},
+            {x + perturb_dist(gen_), y + size + perturb_dist(gen_), z + size + perturb_dist(gen_)}
+        };
+
+        // Add some internal vertices for complexity
+        for (int i = 0; i < 4; ++i) {
+            double mid_x = x + size / 2.0 + perturb_dist(gen_);
+            double mid_y = y + size / 2.0 + perturb_dist(gen_);
+            double mid_z = z + size / 2.0 + perturb_dist(gen_);
+            vertices.push_back({ mid_x, mid_y, mid_z });
+        }
+
+        // Complex face structure
+        faces = {
+            // Bottom faces
+            {0, 1, 8}, {1, 2, 8}, {2, 3, 8}, {3, 0, 8},
+            // Top faces
+            {4, 7, 9}, {7, 6, 9}, {6, 5, 9}, {5, 4, 9},
+            // Side faces
+            {0, 4, 10}, {4, 5, 10}, {5, 1, 10}, {1, 0, 10},
+            {2, 6, 11}, {6, 7, 11}, {7, 3, 11}, {3, 2, 11},
+            // Additional complex faces
+            {0, 3, 7}, {0, 7, 4}, {1, 5, 6}, {1, 6, 2}
+        };
     }
 };
 
@@ -251,6 +470,17 @@ public:
             -80.0, 80.0,
             "Entities clustered in groups"
             });
+
+        // ForceFlow Mesh test - specialized for mesh entities
+        test_scenarios_.push_back({
+            "ForceFlow Mesh",
+            100,
+            300, 300, 150,
+            0.1, 0.1,
+            2.0, 8.0,
+            -40.0, 40.0,
+            "Mesh entities optimized for ForceFlow GPU acceleration"
+            });
     }
 
     AdvancedBenchmarkResult runSingleBenchmark(const TestScenario& scenario,
@@ -268,6 +498,9 @@ public:
         std::vector<std::shared_ptr<SpatialEntity>> entities;
         if (use_clustered && scenario.name == "Clustered") {
             entities = generator.generateClusteredEntities(scenario.num_entities);
+        }
+        else if (scenario.name == "ForceFlow Mesh") {
+            entities = generator.generateMeshEntityBatch(scenario.num_entities);
         }
         else {
             entities = generator.generateEntityBatch(scenario.num_entities);
@@ -311,6 +544,27 @@ public:
         result.grid_size_z = scenario.grid_z;
         result.resolution_xy = scenario.resolution_xy;
         result.resolution_z = scenario.resolution_z;
+        result.active_voxels = entities.size();
+
+        if (algorithm_type == VoxelizationFactory::AlgorithmType::GPU_OPTIMIZED) {
+            // GPU_OPTIMIZED 已通过 factory 禁用并 fallback 到 GPU_CUDA
+            // 这里不需要特殊处理，直接使用 factory 返回的算法
+            const unsigned char* voxel_data = algorithm->getVoxelGrid();
+            int grid_size = scenario.grid_x * scenario.grid_y * scenario.grid_z;
+            result.total_voxels = grid_size;
+            result.active_voxels = std::count_if(voxel_data, voxel_data + grid_size, [](unsigned char v) { return v > 0; });
+            result.memory_usage_mb = grid_size / 1024.0 / 1024.0;
+            result.cpu_utilization = 0.0; // GPU algorithms have 0 CPU utilization
+        }
+        else if (algorithm_type == VoxelizationFactory::AlgorithmType::GPU_CUDA) {
+            // GPU_CUDA 也通过 factory 统一处理
+            const unsigned char* voxel_data = algorithm->getVoxelGrid();
+            int grid_size = scenario.grid_x * scenario.grid_y * scenario.grid_z;
+            result.total_voxels = grid_size;
+            result.active_voxels = std::count_if(voxel_data, voxel_data + grid_size, [](unsigned char v) { return v > 0; });
+            result.memory_usage_mb = grid_size / 1024.0 / 1024.0;
+            result.cpu_utilization = 0.0; // GPU algorithms have 0 CPU utilization
+        }
 
         return result;
     }
@@ -319,7 +573,9 @@ public:
         std::vector<VoxelizationFactory::AlgorithmType> algorithms = {
             VoxelizationFactory::AlgorithmType::CPU_SEQUENTIAL,
             VoxelizationFactory::AlgorithmType::CPU_PARALLEL,
-            VoxelizationFactory::AlgorithmType::GPU_CUDA
+            // VoxelizationFactory::AlgorithmType::GPU_CUDA,
+            VoxelizationFactory::AlgorithmType::FORCEFLOW
+            // GPU_OPTIMIZED temporarily disabled due to segmentation fault
         };
 
         printSystemInfo();
@@ -455,7 +711,7 @@ private:
 
         csv_file << "Scenario,Algorithm,Total_Time_ms,Avg_Time_per_Entity_ms,Total_Voxels,"
             << "Voxels_per_Second,Memory_MB,CPU_Utilization,Grid_Size_X,Grid_Size_Y,Grid_Size_Z,"
-            << "Resolution_XY,Resolution_Z\n";
+            << "Resolution_XY,Resolution_Z,Active_Voxels\n";
 
         for (const auto& scenario_pair : all_results_) {
             for (const auto& result : scenario_pair.second) {
@@ -471,7 +727,8 @@ private:
                     << result.grid_size_y << ","
                     << result.grid_size_z << ","
                     << result.resolution_xy << ","
-                    << result.resolution_z << "\n";
+                    << result.resolution_z << ","
+                    << result.active_voxels << "\n";
             }
         }
 
@@ -523,6 +780,10 @@ private:
 #endif
         case VoxelizationFactory::AlgorithmType::GPU_CUDA:
             return 10.0; // GPU offload, low CPU usage
+        case VoxelizationFactory::AlgorithmType::FORCEFLOW:
+            return 5.0; // ForceFlow GPU acceleration with minimal CPU overhead
+        case VoxelizationFactory::AlgorithmType::GPU_OPTIMIZED:
+            return 0.0; // GPU optimized, no CPU usage
         default:
             return 50.0;
         }

@@ -98,6 +98,24 @@ namespace voxelization {
         double radius_, height_;
     };
 
+    /**
+     * @brief Mesh-shaped spatial entity
+     */
+    class MeshEntity : public SpatialEntity {
+    public:
+        MeshEntity(const std::vector<Eigen::Vector3d>& vertices, const std::vector<std::vector<int>>& faces);
+        std::vector<double> getBoundingBox() const override;
+        bool isPointInside(double x, double y, double z) const override;
+        std::string getType() const override { return "mesh"; }
+        std::map<std::string, double> getProperties() const override;
+        bool isValid() const { return !vertices_.empty(); }
+        const std::vector<Eigen::Vector3d>& getVertices() const { return vertices_; }
+        const std::vector<std::vector<int>>& getFaces() const { return faces_; }
+    private:
+        std::vector<Eigen::Vector3d> vertices_;
+        std::vector<std::vector<int>> faces_;
+    };
+
     // class MeshEntity; // 前向声明（如有需要）
 
     /**
@@ -163,6 +181,11 @@ namespace voxelization {
          * @return Vector of available entity types
          */
         static std::vector<std::string> getAvailableTypes();
+
+        /**
+         * @brief Create a batch of random entities (for benchmarks)
+         */
+        static std::vector<std::shared_ptr<SpatialEntity>> createRandomEntities(int num);
     };
 
 } // namespace voxelization

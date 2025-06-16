@@ -4,157 +4,113 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
-#include <thread>
-#include <vector>
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
 
+// CUDA kernel for box voxelization
+__global__ void voxelizeBoxKernel(
+    unsigned char* voxel_grid,
+    int grid_x, int grid_y, int grid_z,
+    double resolution_xy, double resolution_z,
+    double origin_x, double origin_y, double origin_z,
+    double center_x, double center_y, double center_z,
+    double size_x, double size_y, double size_z,
+    unsigned char cost_value) {
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int z = blockIdx.z * blockDim.z + threadIdx.z;
+
+    if (x >= grid_x || y >= grid_y || z >= grid_z) {
+        return;
+    }
+
+    // Convert voxel coordinates to world coordinates
+    double world_x = origin_x + (x + 0.5) * resolution_xy;
+    double world_y = origin_y + (y + 0.5) * resolution_xy;
+    double world_z = origin_z + (z + 0.5) * resolution_z;
+
+    // Check if point is inside box
+    if (world_x >= center_x - size_x / 2 && world_x <= center_x + size_x / 2 &&
+        world_y >= center_y - size_y / 2 && world_y <= center_y + size_y / 2 &&
+        world_z >= center_z - size_z / 2 && world_z <= center_z + size_z / 2) {
+
+        int index = z * grid_x * grid_y + y * grid_x + x;
+        voxel_grid[index] = cost_value;
+    }
+}
+
+// CUDA kernel for sphere voxelization
+__global__ void voxelizeSphereKernel(
+    unsigned char* voxel_grid,
+    int grid_x, int grid_y, int grid_z,
+    double resolution_xy, double resolution_z,
+    double origin_x, double origin_y, double origin_z,
+    double center_x, double center_y, double center_z,
+    double radius,
+    unsigned char cost_value) {
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int z = blockIdx.z * blockDim.z + threadIdx.z;
+
+    if (x >= grid_x || y >= grid_y || z >= grid_z) {
+        return;
+    }
+
+    // Convert voxel coordinates to world coordinates
+    double world_x = origin_x + (x + 0.5) * resolution_xy;
+    double world_y = origin_y + (y + 0.5) * resolution_xy;
+    double world_z = origin_z + (z + 0.5) * resolution_z;
+
+    // Check if point is inside sphere
+    double dx = world_x - center_x;
+    double dy = world_y - center_y;
+    double dz = world_z - center_z;
+    double distance_squared = dx * dx + dy * dy + dz * dz;
+
+    if (distance_squared <= radius * radius) {
+        int index = z * grid_x * grid_y + y * grid_x + x;
+        voxel_grid[index] = cost_value;
+    }
+}
+
+// CUDA kernel for cylinder voxelization
+__global__ void voxelizeCylinderKernel(
+    unsigned char* voxel_grid,
+    int grid_x, int grid_y, int grid_z,
+    double resolution_xy, double resolution_z,
+    double origin_x, double origin_y, double origin_z,
+    double center_x, double center_y, double center_z,
+    double radius, double height,
+    unsigned char cost_value) {
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int z = blockIdx.z * blockDim.z + threadIdx.z;
+
+    if (x >= grid_x || y >= grid_y || z >= grid_z) {
+        return;
+    }
+
+    // Convert voxel coordinates to world coordinates
+    double world_x = origin_x + (x + 0.5) * resolution_xy;
+    double world_y = origin_y + (y + 0.5) * resolution_xy;
+    double world_z = origin_z + (z + 0.5) * resolution_z;
+
+    // Check if point is inside cylinder
+    double dx = world_x - center_x;
+    double dy = world_y - center_y;
+    double distance_squared = dx * dx + dy * dy;
+
+    if (distance_squared <= radius * radius &&
+        world_z >= center_z - height / 2 && world_z <= center_z + height / 2) {
+        int index = z * grid_x * grid_y + y * grid_x + x;
+        voxel_grid[index] = cost_value;
+    }
+}
 
 namespace voxelization {
-
-    // Simplified GPU implementation using CPU threads to simulate GPU parallelism
-    class SimulatedGPU {
-    private:
-        std::vector<unsigned char>& voxel_grid_;
-        int grid_x_, grid_y_, grid_z_;
-        double resolution_xy_, resolution_z_;
-        double origin_x_, origin_y_, origin_z_;
-        int num_threads_;
-
-    public:
-        SimulatedGPU(std::vector<unsigned char>& voxel_grid,
-            int grid_x, int grid_y, int grid_z,
-            double resolution_xy, double resolution_z,
-            double origin_x, double origin_y, double origin_z)
-            : voxel_grid_(voxel_grid), grid_x_(grid_x), grid_y_(grid_y), grid_z_(grid_z),
-            resolution_xy_(resolution_xy), resolution_z_(resolution_z),
-            origin_x_(origin_x), origin_y_(origin_y), origin_z_(origin_z) {
-            num_threads_ = std::thread::hardware_concurrency();
-        }
-
-        // Simulate GPU kernel for box voxelization
-        void voxelizeBox(double center_x, double center_y, double center_z,
-            double size_x, double size_y, double size_z,
-            unsigned char cost_value) {
-
-            std::vector<std::thread> threads;
-            int z_per_thread = grid_z_ / num_threads_;
-
-            for (int t = 0; t < num_threads_; ++t) {
-                int z_start = t * z_per_thread;
-                int z_end = (t == num_threads_ - 1) ? grid_z_ : (t + 1) * z_per_thread;
-
-                threads.emplace_back([=]() {
-                    for (int z = z_start; z < z_end; ++z) {
-                        for (int y = 0; y < grid_y_; ++y) {
-                            for (int x = 0; x < grid_x_; ++x) {
-                                // Convert voxel coordinates to world coordinates
-                                double world_x = origin_x_ + (x + 0.5) * resolution_xy_;
-                                double world_y = origin_y_ + (y + 0.5) * resolution_xy_;
-                                double world_z = origin_z_ + (z + 0.5) * resolution_z_;
-
-                                // Check if point is inside box
-                                if (world_x >= center_x - size_x / 2 && world_x <= center_x + size_x / 2 &&
-                                    world_y >= center_y - size_y / 2 && world_y <= center_y + size_y / 2 &&
-                                    world_z >= center_z - size_z / 2 && world_z <= center_z + size_z / 2) {
-
-                                    int index = z * grid_x_ * grid_y_ + y * grid_x_ + x;
-                                    voxel_grid_[index] = cost_value;
-                                }
-                            }
-                        }
-                    }
-                    });
-            }
-
-            // Wait for all threads to complete
-            for (auto& thread : threads) {
-                thread.join();
-            }
-        }
-
-        // Simulate GPU kernel for sphere voxelization
-        void voxelizeSphere(double center_x, double center_y, double center_z,
-            double radius, unsigned char cost_value) {
-
-            std::vector<std::thread> threads;
-            int z_per_thread = grid_z_ / num_threads_;
-
-            for (int t = 0; t < num_threads_; ++t) {
-                int z_start = t * z_per_thread;
-                int z_end = (t == num_threads_ - 1) ? grid_z_ : (t + 1) * z_per_thread;
-
-                threads.emplace_back([=]() {
-                    for (int z = z_start; z < z_end; ++z) {
-                        for (int y = 0; y < grid_y_; ++y) {
-                            for (int x = 0; x < grid_x_; ++x) {
-                                // Convert voxel coordinates to world coordinates
-                                double world_x = origin_x_ + (x + 0.5) * resolution_xy_;
-                                double world_y = origin_y_ + (y + 0.5) * resolution_xy_;
-                                double world_z = origin_z_ + (z + 0.5) * resolution_z_;
-
-                                // Check if point is inside sphere
-                                double dx = world_x - center_x;
-                                double dy = world_y - center_y;
-                                double dz = world_z - center_z;
-                                double distance_squared = dx * dx + dy * dy + dz * dz;
-
-                                if (distance_squared <= radius * radius) {
-                                    int index = z * grid_x_ * grid_y_ + y * grid_x_ + x;
-                                    voxel_grid_[index] = cost_value;
-                                }
-                            }
-                        }
-                    }
-                    });
-            }
-
-            // Wait for all threads to complete
-            for (auto& thread : threads) {
-                thread.join();
-            }
-        }
-
-        // Simulate GPU kernel for cylinder voxelization
-        void voxelizeCylinder(double center_x, double center_y, double center_z,
-            double radius, double height, unsigned char cost_value) {
-
-            std::vector<std::thread> threads;
-            int z_per_thread = grid_z_ / num_threads_;
-
-            for (int t = 0; t < num_threads_; ++t) {
-                int z_start = t * z_per_thread;
-                int z_end = (t == num_threads_ - 1) ? grid_z_ : (t + 1) * z_per_thread;
-
-                threads.emplace_back([=]() {
-                    for (int z = z_start; z < z_end; ++z) {
-                        for (int y = 0; y < grid_y_; ++y) {
-                            for (int x = 0; x < grid_x_; ++x) {
-                                // Convert voxel coordinates to world coordinates
-                                double world_x = origin_x_ + (x + 0.5) * resolution_xy_;
-                                double world_y = origin_y_ + (y + 0.5) * resolution_xy_;
-                                double world_z = origin_z_ + (z + 0.5) * resolution_z_;
-
-                                // Check if point is inside cylinder
-                                double dx = world_x - center_x;
-                                double dy = world_y - center_y;
-                                double distance_squared = dx * dx + dy * dy;
-
-                                if (distance_squared <= radius * radius &&
-                                    world_z >= center_z - height / 2 && world_z <= center_z + height / 2) {
-                                    int index = z * grid_x_ * grid_y_ + y * grid_x_ + x;
-                                    voxel_grid_[index] = cost_value;
-                                }
-                            }
-                        }
-                    }
-                    });
-            }
-
-            // Wait for all threads to complete
-            for (auto& thread : threads) {
-                thread.join();
-            }
-        }
-    };
 
     // GPUCudaVoxelization implementation
     GPUCudaVoxelization::GPUCudaVoxelization()
@@ -162,10 +118,24 @@ namespace voxelization {
         origin_x_(0.0), origin_y_(0.0), origin_z_(0.0), d_voxel_grid_(nullptr),
         grid_size_(0), gpu_available_(false) {
 
-        // Check if we can use simulated GPU (multi-threaded CPU)
-        gpu_available_ = true;
-        std::cout << "Simulated GPU acceleration enabled using "
-            << std::thread::hardware_concurrency() << " threads." << std::endl;
+        // Check CUDA availability
+        int device_count;
+        cudaError_t error = cudaGetDeviceCount(&device_count);
+
+        if (error == cudaSuccess && device_count > 0) {
+            gpu_available_ = true;
+            cudaSetDevice(0); // Use first GPU
+
+            // Get GPU info
+            cudaDeviceProp prop;
+            cudaGetDeviceProperties(&prop, 0);
+            std::cout << "CUDA GPU acceleration enabled: " << prop.name
+                << " with " << prop.multiProcessorCount << " SMs" << std::endl;
+        }
+        else {
+            gpu_available_ = false;
+            std::cout << "CUDA GPU not available, falling back to CPU implementation" << std::endl;
+        }
     }
 
     GPUCudaVoxelization::~GPUCudaVoxelization() {
@@ -186,6 +156,49 @@ namespace voxelization {
 
         voxel_grid_.resize(grid_x_ * grid_y_ * grid_z_, 0);
         grid_size_ = voxel_grid_.size();
+
+        if (gpu_available_) {
+            allocateGPUMemory();
+        }
+    }
+
+    void GPUCudaVoxelization::allocateGPUMemory() {
+        if (d_voxel_grid_ != nullptr) {
+            cudaFree(d_voxel_grid_);
+        }
+
+        cudaError_t error = cudaMalloc(&d_voxel_grid_, grid_size_ * sizeof(unsigned char));
+        if (error != cudaSuccess) {
+            std::cerr << "CUDA memory allocation failed: " << cudaGetErrorString(error) << std::endl;
+            gpu_available_ = false;
+        }
+    }
+
+    void GPUCudaVoxelization::freeGPUMemory() {
+        if (d_voxel_grid_ != nullptr) {
+            cudaFree(d_voxel_grid_);
+            d_voxel_grid_ = nullptr;
+        }
+    }
+
+    void GPUCudaVoxelization::copyToGPU() {
+        if (gpu_available_ && d_voxel_grid_ != nullptr) {
+            cudaError_t error = cudaMemcpy(d_voxel_grid_, voxel_grid_.data(),
+                grid_size_ * sizeof(unsigned char), cudaMemcpyHostToDevice);
+            if (error != cudaSuccess) {
+                std::cerr << "CUDA copy to device failed: " << cudaGetErrorString(error) << std::endl;
+            }
+        }
+    }
+
+    void GPUCudaVoxelization::copyFromGPU() {
+        if (gpu_available_ && d_voxel_grid_ != nullptr) {
+            cudaError_t error = cudaMemcpy(voxel_grid_.data(), d_voxel_grid_,
+                grid_size_ * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+            if (error != cudaSuccess) {
+                std::cerr << "CUDA copy from device failed: " << cudaGetErrorString(error) << std::endl;
+            }
+        }
     }
 
     int GPUCudaVoxelization::voxelizeEntity(const std::shared_ptr<SpatialEntity>& entity,
@@ -199,90 +212,40 @@ namespace voxelization {
             return cpu_voxelizer.voxelizeEntity(entity, buffer_size, cost_value);
         }
 
-        // Simulated GPU implementation
-        clear();
+        // Copy current voxel grid to GPU
+        copyToGPU();
 
-        std::string entity_type = entity->getType();
-        auto properties = entity->getProperties();
+        int marked_voxels = 0;
 
-        SimulatedGPU gpu(voxel_grid_, grid_x_, grid_y_, grid_z_,
-            resolution_xy_, resolution_z_,
-            origin_x_, origin_y_, origin_z_);
-
-        if (entity_type == "box") {
-            double center_x = properties["center_x"];
-            double center_y = properties["center_y"];
-            double center_z = properties["center_z"];
-            double size_x = properties["size_x"];
-            double size_y = properties["size_y"];
-            double size_z = properties["size_z"];
-
-            gpu.voxelizeBox(center_x, center_y, center_z, size_x, size_y, size_z, cost_value);
-
+        // Determine entity type and call appropriate GPU kernel
+        if (auto box_entity = std::dynamic_pointer_cast<BoxEntity>(entity)) {
+            marked_voxels = voxelizeBoxGPU(entity, buffer_size, cost_value);
         }
-        else if (entity_type == "sphere") {
-            double center_x = properties["center_x"];
-            double center_y = properties["center_y"];
-            double center_z = properties["center_z"];
-            double radius = properties["radius"];
-
-            gpu.voxelizeSphere(center_x, center_y, center_z, radius, cost_value);
-
+        else if (auto sphere_entity = std::dynamic_pointer_cast<SphereEntity>(entity)) {
+            marked_voxels = voxelizeSphereGPU(entity, buffer_size, cost_value);
         }
-        else if (entity_type == "cylinder") {
-            double center_x = properties["center_x"];
-            double center_y = properties["center_y"];
-            double center_z = properties["center_z"];
-            double radius = properties["radius"];
-            double height = properties["height"];
-
-            gpu.voxelizeCylinder(center_x, center_y, center_z, radius, height, cost_value);
-
+        else if (auto cylinder_entity = std::dynamic_pointer_cast<CylinderEntity>(entity)) {
+            marked_voxels = voxelizeCylinderGPU(entity, buffer_size, cost_value);
         }
         else {
-            // For other entity types, use CPU implementation
-            CPUSequentialVoxelization cpu_voxelizer;
-            cpu_voxelizer.initialize(grid_x_, grid_y_, grid_z_, resolution_xy_, resolution_z_,
-                origin_x_, origin_y_, origin_z_);
-            return cpu_voxelizer.voxelizeEntity(entity, buffer_size, cost_value);
+            std::cerr << "Unknown entity type for GPU voxelization" << std::endl;
+            return 0;
         }
 
-        // Count marked voxels
-        int marked_voxels = 0;
-        for (size_t i = 0; i < voxel_grid_.size(); ++i) {
-            if (voxel_grid_[i] == cost_value) {
-                marked_voxels++;
-            }
-        }
+        // Copy result back from GPU
+        copyFromGPU();
 
         return marked_voxels;
     }
 
-    int GPUCudaVoxelization::voxelizeEntities(const std::vector<std::shared_ptr<SpatialEntity>>& entities,
-        double buffer_size, unsigned char cost_value) {
-
-        if (!gpu_available_) {
-            // Fallback to CPU implementation
-            CPUSequentialVoxelization cpu_voxelizer;
-            cpu_voxelizer.initialize(grid_x_, grid_y_, grid_z_, resolution_xy_, resolution_z_,
-                origin_x_, origin_y_, origin_z_);
-            return cpu_voxelizer.voxelizeEntities(entities, buffer_size, cost_value);
-        }
-
-        // Simulated GPU implementation
-        clear();
-        int total_voxels = 0;
-
-        for (const auto& entity : entities) {
-            total_voxels += voxelizeEntity(entity, buffer_size, cost_value);
-        }
-
-        return total_voxels;
-    }
-
     int GPUCudaVoxelization::voxelizeBoxGPU(const std::shared_ptr<SpatialEntity>& entity,
         double buffer_size, unsigned char cost_value) {
-        auto properties = entity->getProperties();
+
+        auto box_entity = std::dynamic_pointer_cast<BoxEntity>(entity);
+        if (!box_entity) return 0;
+
+        // Get box parameters from properties
+        auto properties = box_entity->getProperties();
         double center_x = properties["center_x"];
         double center_y = properties["center_y"];
         double center_z = properties["center_z"];
@@ -290,14 +253,33 @@ namespace voxelization {
         double size_y = properties["size_y"];
         double size_z = properties["size_z"];
 
-        SimulatedGPU gpu(voxel_grid_, grid_x_, grid_y_, grid_z_,
-            resolution_xy_, resolution_z_,
-            origin_x_, origin_y_, origin_z_);
+        // Define block and grid dimensions
+        dim3 block_size(16, 16, 4);
+        dim3 grid_size(
+            (grid_x_ + block_size.x - 1) / block_size.x,
+            (grid_y_ + block_size.y - 1) / block_size.y,
+            (grid_z_ + block_size.z - 1) / block_size.z
+        );
 
-        gpu.voxelizeBox(center_x, center_y, center_z, size_x, size_y, size_z, cost_value);
+        // Launch kernel
+        voxelizeBoxKernel << <grid_size, block_size >> > (
+            d_voxel_grid_, grid_x_, grid_y_, grid_z_,
+            resolution_xy_, resolution_z_, origin_x_, origin_y_, origin_z_,
+            center_x, center_y, center_z, size_x, size_y, size_z, cost_value);
 
-        // Count marked voxels
+        // Check for errors
+        cudaError_t error = cudaGetLastError();
+        if (error != cudaSuccess) {
+            std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(error) << std::endl;
+            return 0;
+        }
+
+        // Synchronize
+        cudaDeviceSynchronize();
+
+        // Count marked voxels (simplified - in practice you might want to do this on GPU)
         int marked_voxels = 0;
+        copyFromGPU();
         for (size_t i = 0; i < voxel_grid_.size(); ++i) {
             if (voxel_grid_[i] == cost_value) {
                 marked_voxels++;
@@ -309,20 +291,44 @@ namespace voxelization {
 
     int GPUCudaVoxelization::voxelizeSphereGPU(const std::shared_ptr<SpatialEntity>& entity,
         double buffer_size, unsigned char cost_value) {
-        auto properties = entity->getProperties();
+
+        auto sphere_entity = std::dynamic_pointer_cast<SphereEntity>(entity);
+        if (!sphere_entity) return 0;
+
+        // Get sphere parameters from properties
+        auto properties = sphere_entity->getProperties();
         double center_x = properties["center_x"];
         double center_y = properties["center_y"];
         double center_z = properties["center_z"];
         double radius = properties["radius"];
 
-        SimulatedGPU gpu(voxel_grid_, grid_x_, grid_y_, grid_z_,
-            resolution_xy_, resolution_z_,
-            origin_x_, origin_y_, origin_z_);
+        // Define block and grid dimensions
+        dim3 block_size(16, 16, 4);
+        dim3 grid_size(
+            (grid_x_ + block_size.x - 1) / block_size.x,
+            (grid_y_ + block_size.y - 1) / block_size.y,
+            (grid_z_ + block_size.z - 1) / block_size.z
+        );
 
-        gpu.voxelizeSphere(center_x, center_y, center_z, radius, cost_value);
+        // Launch kernel
+        voxelizeSphereKernel << <grid_size, block_size >> > (
+            d_voxel_grid_, grid_x_, grid_y_, grid_z_,
+            resolution_xy_, resolution_z_, origin_x_, origin_y_, origin_z_,
+            center_x, center_y, center_z, radius, cost_value);
+
+        // Check for errors
+        cudaError_t error = cudaGetLastError();
+        if (error != cudaSuccess) {
+            std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(error) << std::endl;
+            return 0;
+        }
+
+        // Synchronize
+        cudaDeviceSynchronize();
 
         // Count marked voxels
         int marked_voxels = 0;
+        copyFromGPU();
         for (size_t i = 0; i < voxel_grid_.size(); ++i) {
             if (voxel_grid_[i] == cost_value) {
                 marked_voxels++;
@@ -334,21 +340,45 @@ namespace voxelization {
 
     int GPUCudaVoxelization::voxelizeCylinderGPU(const std::shared_ptr<SpatialEntity>& entity,
         double buffer_size, unsigned char cost_value) {
-        auto properties = entity->getProperties();
+
+        auto cylinder_entity = std::dynamic_pointer_cast<CylinderEntity>(entity);
+        if (!cylinder_entity) return 0;
+
+        // Get cylinder parameters from properties
+        auto properties = cylinder_entity->getProperties();
         double center_x = properties["center_x"];
         double center_y = properties["center_y"];
         double center_z = properties["center_z"];
         double radius = properties["radius"];
         double height = properties["height"];
 
-        SimulatedGPU gpu(voxel_grid_, grid_x_, grid_y_, grid_z_,
-            resolution_xy_, resolution_z_,
-            origin_x_, origin_y_, origin_z_);
+        // Define block and grid dimensions
+        dim3 block_size(16, 16, 4);
+        dim3 grid_size(
+            (grid_x_ + block_size.x - 1) / block_size.x,
+            (grid_y_ + block_size.y - 1) / block_size.y,
+            (grid_z_ + block_size.z - 1) / block_size.z
+        );
 
-        gpu.voxelizeCylinder(center_x, center_y, center_z, radius, height, cost_value);
+        // Launch kernel
+        voxelizeCylinderKernel << <grid_size, block_size >> > (
+            d_voxel_grid_, grid_x_, grid_y_, grid_z_,
+            resolution_xy_, resolution_z_, origin_x_, origin_y_, origin_z_,
+            center_x, center_y, center_z, radius, height, cost_value);
+
+        // Check for errors
+        cudaError_t error = cudaGetLastError();
+        if (error != cudaSuccess) {
+            std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(error) << std::endl;
+            return 0;
+        }
+
+        // Synchronize
+        cudaDeviceSynchronize();
 
         // Count marked voxels
         int marked_voxels = 0;
+        copyFromGPU();
         for (size_t i = 0; i < voxel_grid_.size(); ++i) {
             if (voxel_grid_[i] == cost_value) {
                 marked_voxels++;
@@ -450,22 +480,6 @@ namespace voxelization {
         file.read(reinterpret_cast<char*>(voxel_grid_.data()), voxel_grid_.size());
 
         return true;
-    }
-
-    void GPUCudaVoxelization::allocateGPUMemory() {
-        // No-op for simulated GPU
-    }
-
-    void GPUCudaVoxelization::freeGPUMemory() {
-        // No-op for simulated GPU
-    }
-
-    void GPUCudaVoxelization::copyToGPU() {
-        // No-op for simulated GPU
-    }
-
-    void GPUCudaVoxelization::copyFromGPU() {
-        // No-op for simulated GPU
     }
 
     // Legacy methods for compatibility

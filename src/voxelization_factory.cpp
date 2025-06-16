@@ -2,8 +2,11 @@
 #include "voxelization_algorithms.hpp"
 #include "cpu_voxelization.hpp"
 #include "gpu_voxelization.hpp"
+#include "gpu_voxelization_optimized.hpp"
+#include "forceflow_voxelizer.hpp"
 #include "hybrid_voxelization.hpp"
 #include <memory>
+#include <iostream>
 
 namespace voxelization {
 
@@ -18,11 +21,18 @@ namespace voxelization {
         case AlgorithmType::GPU_CUDA:
             return std::make_shared<GPUCudaVoxelization>();
 
+        case AlgorithmType::GPU_OPTIMIZED:
+            return std::make_shared<OptimizedGPUCudaVoxelization>();
+
+        case AlgorithmType::FORCEFLOW:
+            return std::make_shared<ForceFlowVoxelizer>();
+
         case AlgorithmType::HYBRID:
             return std::make_shared<HybridVoxelization>();
 
         default:
-            return nullptr;
+            std::cerr << "[VoxelizationFactory] Unknown algorithm type, using CPU_SEQUENTIAL as fallback." << std::endl;
+            return std::make_shared<CPUSequentialVoxelization>();
         }
     }
 
@@ -31,6 +41,8 @@ namespace voxelization {
             "CPU_SEQUENTIAL",
             "CPU_PARALLEL",
             "GPU_CUDA",
+            "GPU_OPTIMIZED",
+            "FORCEFLOW",
             "HYBRID"
         };
     }
@@ -39,6 +51,8 @@ namespace voxelization {
         if (name == "CPU_SEQUENTIAL") return AlgorithmType::CPU_SEQUENTIAL;
         if (name == "CPU_PARALLEL") return AlgorithmType::CPU_PARALLEL;
         if (name == "GPU_CUDA") return AlgorithmType::GPU_CUDA;
+        if (name == "GPU_OPTIMIZED") return AlgorithmType::GPU_OPTIMIZED;
+        if (name == "FORCEFLOW") return AlgorithmType::FORCEFLOW;
         if (name == "HYBRID") return AlgorithmType::HYBRID;
         return AlgorithmType::CPU_SEQUENTIAL; // Default
     }
@@ -48,6 +62,8 @@ namespace voxelization {
         case AlgorithmType::CPU_SEQUENTIAL: return "CPU_SEQUENTIAL";
         case AlgorithmType::CPU_PARALLEL: return "CPU_PARALLEL";
         case AlgorithmType::GPU_CUDA: return "GPU_CUDA";
+        case AlgorithmType::GPU_OPTIMIZED: return "GPU_OPTIMIZED";
+        case AlgorithmType::FORCEFLOW: return "FORCEFLOW";
         case AlgorithmType::HYBRID: return "HYBRID";
         default: return "UNKNOWN";
         }

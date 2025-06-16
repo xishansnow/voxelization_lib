@@ -46,12 +46,13 @@ int main(int argc, char* argv[]) {
     }
 
     // Print mesh information
-    const auto& mesh_data = mesh_entity->getMeshData();
+    const auto& vertices = mesh_entity->getVertices();
+    const auto& faces = mesh_entity->getFaces();
     std::cout << "\nMesh Information:" << std::endl;
-    std::cout << "  Vertices: " << mesh_data.vertices.size() << std::endl;
-    std::cout << "  Triangles: " << mesh_data.indices.size() / 3 << std::endl;
-    std::cout << "  Normals: " << mesh_data.normals.size() << std::endl;
-    std::cout << "  Texture coordinates: " << mesh_data.tex_coords.size() << std::endl;
+    std::cout << "  Vertices: " << vertices.size() << std::endl;
+    std::cout << "  Triangles: " << faces.size() / 3 << std::endl;
+    // std::cout << "  Normals: " << mesh_entity->getNormals().size() << std::endl;
+    // std::cout << "  Texture coordinates: " << mesh_entity->getTexCoords().size() << std::endl;
 
     auto bbox = mesh_entity->getBoundingBox();
     std::cout << "  Bounding box: ("
